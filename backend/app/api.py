@@ -34,7 +34,15 @@ app = FastAPI(
 async def startup_event():
     port = os.getenv("PORT", "8000")
     logger.info(f"🚀 ChatPDF API starting on port {port}")
-    logger.info(f"Environment: PORT={port}, QDRANT_URL={os.getenv('QDRANT_URL', 'not set')}")
+    logger.info(f"Environment: PORT={port}")
+    logger.info(f"QDRANT_URL={os.getenv('QDRANT_URL', 'not set')}")
+    logger.info(f"GOOGLE_API_KEY={'set' if os.getenv('GOOGLE_API_KEY') else 'not set'}")
+    # Test basic imports
+    try:
+        import fastapi
+        logger.info(f"FastAPI version: {fastapi.__version__}")
+    except Exception as e:
+        logger.error(f"Error checking FastAPI: {e}")
 
 # CORS middleware
 # Allow origins from environment variable or default to all
@@ -67,12 +75,13 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
+@app.get("/")
 @app.get("/health")
 async def health_check():
     """Health check endpoint - simplified for Railway healthcheck."""
     # Simple healthcheck that always returns 200 OK
     # This ensures Railway healthcheck passes even if some services are not ready
-    return {"status": "healthy", "service": "chatpdf-api"}
+    return {"status": "healthy", "service": "chatpdf-api", "version": "1.0.0"}
 
 
 @app.post("/upload")
