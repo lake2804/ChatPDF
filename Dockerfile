@@ -25,8 +25,8 @@ EXPOSE 8000
 
 # Run the application
 # Railway provides PORT environment variable
-# Use shell form to allow variable expansion
+# Use python -m to ensure proper module resolution
 ENV PORT=8000
 EXPOSE 8000
-CMD uvicorn app.api:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD python -m uvicorn app.api:app --host 0.0.0.0 --port ${PORT:-8000}
 
