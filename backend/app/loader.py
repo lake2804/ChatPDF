@@ -67,6 +67,18 @@ def load_pdf(path: str) -> List[Document]:
         raise ImportError(error_msg)
     
     try:
+        # Verify PyPDFLoader can be imported and used
+        try:
+            from langchain_community.document_loaders import PyPDFLoader
+        except ImportError as loader_err:
+            import sys
+            error_msg = f"PyPDFLoader cannot be imported: {loader_err}\n"
+            error_msg += f"Python executable: {sys.executable}\n"
+            error_msg += f"This may indicate langchain-community is not properly installed.\n"
+            error_msg += f"Try: pip install --upgrade langchain-community"
+            raise ImportError(error_msg)
+        
+        logger.info(f"Loading PDF with PyPDFLoader: {path}")
         loader = PyPDFLoader(path)
         documents = []
         for i, doc in enumerate(loader.load()):
@@ -75,19 +87,21 @@ def load_pdf(path: str) -> List[Document]:
             doc.metadata["file_type"] = "pdf"
             doc.metadata["source_file"] = os.path.basename(path)
             documents.append(doc)
+        logger.info(f"Successfully loaded {len(documents)} pages from PDF")
         return documents
     except ImportError as e:
         error_msg = str(e)
         import sys
-        if "pypdf" in error_msg.lower():
-            detailed_msg = f"`pypdf` package not found.\n"
+        if "pypdf" in error_msg.lower() or "pypdf" in error_msg:
+            detailed_msg = f"`pypdf` package not found at runtime.\n"
             detailed_msg += f"Python executable: {sys.executable}\n"
             detailed_msg += f"Please install with: pip install pypdf\n"
-            detailed_msg += f"Or ensure you're using the correct virtual environment."
+            detailed_msg += f"Or restart backend with correct virtual environment."
             raise ImportError(detailed_msg)
         raise ImportError(f"Error loading PDF: {error_msg}")
     except Exception as e:
         error_msg = str(e)
+        logger.error(f"Error processing PDF file {path}: {error_msg}", exc_info=True)
         raise ValueError(f"Error processing PDF file: {error_msg}")
 
 
@@ -211,6 +225,40 @@ def extract_images_from_pdf(path: str) -> List[Tuple[bytes, dict]]:
     return images
 
 
+def extract_images_from_pptx(path: str) -> List[Tuple[bytes, dict]]:
+    """Extract images from PPTX with slide metadata."""
+    if not PPTX_AVAILABLE:
+        return []
+    
+    try:
+        prs = Presentation(path)
+        images = []
+        
+        for slide_num, slide in enumerate(prs.slides, 1):
+            for shape_index, shape in enumerate(slide.shapes):
+                # Check if shape has an image
+                if hasattr(shape, "image"):
+                    try:
+                        image_bytes = shape.image.blob
+                        metadata = {
+                            "slide_number": slide_num,
+                            "image_index": shape_index,
+                            "source_file": os.path.basename(path),
+                            "image_format": shape.image.ext  # e.g., 'png', 'jpeg'
+                        }
+                        images.append((image_bytes, metadata))
+                        logger.info(f"Extracted image from slide {slide_num}, shape {shape_index}")
+                    except Exception as e:
+                        logger.warning(f"Error extracting image from slide {slide_num}, shape {shape_index}: {e}")
+                        continue
+        
+        logger.info(f"Extracted {len(images)} images from PPTX file")
+        return images
+    except Exception as e:
+        logger.error(f"Error extracting images from PPTX: {e}")
+        return []
+
+
 def load_document(file_path: str) -> Tuple[List[Document], List[Tuple[bytes, dict]]]:
     """
     Main loader function that routes to appropriate loader based on file extension.
@@ -229,6 +277,7 @@ def load_document(file_path: str) -> Tuple[List[Document], List[Tuple[bytes, dic
         text_docs = load_docx(file_path)
     elif ext == ".pptx":
         text_docs = load_pptx(file_path)
+        images = extract_images_from_pptx(file_path)
     elif ext == ".txt":
         text_docs = load_txt(file_path)
     elif ext in [".md", ".markdown"]:

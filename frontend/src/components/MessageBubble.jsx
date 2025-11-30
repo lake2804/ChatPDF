@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { User, Bot, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 export default function MessageBubble({ message }) {
   const [copied, setCopied] = useState(false)
@@ -53,10 +54,26 @@ export default function MessageBubble({ message }) {
                 </div>
               ) : (
                 <>
-                  <div className="prose prose-sm max-w-none">
-                    <p className="whitespace-pre-wrap break-words text-gray-800 leading-relaxed">
+                  <div className="prose prose-sm max-w-none markdown-content">
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p className="mb-3 text-gray-800 leading-relaxed">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                        em: ({ children }) => <em className="italic text-gray-700">{children}</em>,
+                        ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1 text-gray-800">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1 text-gray-800">{children}</ol>,
+                        li: ({ children }) => <li className="ml-4">{children}</li>,
+                        h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 text-gray-900">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-lg font-semibold mb-2 mt-3 text-gray-900">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-base font-semibold mb-2 mt-2 text-gray-900">{children}</h3>,
+                        code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono text-gray-800">{children}</code>,
+                        pre: ({ children }) => <pre className="bg-gray-100 p-3 rounded mb-3 overflow-x-auto">{children}</pre>,
+                        blockquote: ({ children }) => <blockquote className="border-l-4 border-primary-300 pl-4 italic text-gray-700 mb-3">{children}</blockquote>,
+                        hr: () => <hr className="my-4 border-gray-300" />,
+                      }}
+                    >
                       {message.content || 'No response generated.'}
-                    </p>
+                    </ReactMarkdown>
                   </div>
                   
                   {message.sources && message.sources.length > 0 && (

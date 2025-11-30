@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { Upload, X, FileText, Image as ImageIcon, FileType } from 'lucide-react'
 
-export default function FileUploader({ onUpload }) {
+export default function FileUploader({ onUpload, uploadProgress = 0, isUploading = false }) {
   const [dragActive, setDragActive] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const fileInputRef = useRef(null)
@@ -93,24 +93,43 @@ export default function FileUploader({ onUpload }) {
         />
         
         {selectedFile ? (
-          <div className="flex items-center justify-center gap-4">
-            {getFileIcon(selectedFile.name)}
-            <div className="flex-1 text-left">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                  <p className="text-sm text-gray-500">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
+          <div className="w-full">
+            <div className="flex items-center justify-center gap-4 mb-4">
+              {getFileIcon(selectedFile.name)}
+              <div className="flex-1 text-left">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{selectedFile.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                  {!isUploading && (
+                    <button
+                      onClick={handleRemove}
+                      className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                    >
+                      <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                  )}
                 </div>
-                <button
-                  onClick={handleRemove}
-                  className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
               </div>
             </div>
+            
+            {/* Progress Bar */}
+            {isUploading && (
+              <div className="w-full">
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-primary-600 h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600 mt-2 text-center">
+                  {uploadProgress < 100 ? `Đang tải lên... ${uploadProgress}%` : 'Đang xử lý file...'}
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <>

@@ -128,31 +128,134 @@ def build_and_store_index(file_path: str, force_recreate: bool = False) -> int:
     return len(all_docs)
 
 
+def _detect_language(text: str) -> str:
+    """Detect language from text. Returns 'vi' for Vietnamese, 'en' for English, or 'auto'."""
+    # Vietnamese character set
+    vietnamese_chars = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ'
+    
+    # Count Vietnamese characters
+    vi_count = sum(1 for char in text if char in vietnamese_chars)
+    total_chars = len([c for c in text if c.isalpha()])
+    
+    # If more than 5% Vietnamese characters or Vietnamese words detected, consider it Vietnamese
+    if total_chars > 0 and (vi_count / total_chars > 0.05 or vi_count > 3):
+        return 'vi'
+    
+    # Check for common Vietnamese words
+    vietnamese_words = ['là', 'của', 'và', 'với', 'cho', 'được', 'trong', 'về', 'này', 'đó', 
+                        'như', 'theo', 'từ', 'đến', 'có', 'không', 'một', 'các', 'đã', 'sẽ']
+    text_lower = text.lower()
+    vi_word_count = sum(1 for word in vietnamese_words if word in text_lower)
+    if vi_word_count >= 2:
+        return 'vi'
+    
+    return 'en'
+
+
 def _generate_answer_stream(context: str, question: str) -> Iterator[str]:
     """Generate streaming answer."""
     if not client:
         raise ValueError("Google API client is not initialized. Please check GOOGLE_API_KEY in .env file.")
     
-    prompt = f"""You are a helpful AI assistant. Use the following context to answer the user's question accurately and comprehensively.
+    # Detect language from question
+    detected_lang = _detect_language(question)
+    
+    if detected_lang == 'vi':
+        language_instruction = """Trả lời bằng tiếng Việt một cách chi tiết, đầy đủ và rõ ràng. 
+        - Sử dụng ngôn ngữ tự nhiên, dễ hiểu
+        - Giải thích đầy đủ các khái niệm
+        - Cung cấp ví dụ cụ thể khi có thể
+        - Trình bày có cấu trúc với các đoạn văn rõ ràng"""
+    else:
+        language_instruction = """Answer in the same language as the question, providing a detailed, comprehensive, and well-structured response.
+        - Use natural, clear language
+        - Explain concepts thoroughly
+        - Provide specific examples when possible
+        - Structure your response with clear paragraphs"""
+    
+    prompt = f"""You are an expert AI assistant specialized in document analysis and question answering. Your task is to provide detailed, comprehensive, and well-structured answers based on the provided context.
 
-Context:
+Context from documents:
 {context}
 
-Question: {question}
+User's question: {question}
 
-Instructions:
-- Answer based on the provided context
-- If the context doesn't contain enough information, say so clearly
-- Cite specific details from the context when possible
-- Be concise but thorough
-- If the question is about images, refer to the image descriptions provided in the context
+CRITICAL INSTRUCTIONS - FOLLOW THESE CAREFULLY:
+
+1. LANGUAGE REQUIREMENT: {language_instruction}
+   - Match the language of the question exactly
+   - If question is in Vietnamese, answer in Vietnamese
+   - If question is in English, answer in English
+   - Maintain consistency throughout the response
+
+2. LENGTH AND COMPREHENSIVENESS (VERY IMPORTANT):
+   - Provide a THOROUGH, DETAILED answer - NOT a brief summary
+   - Aim for at least 300-500 words for complex questions, 150-300 words for simpler ones
+   - Elaborate on ALL relevant points mentioned in the context
+   - Include background information and context when relevant
+   - Do NOT give short, one-sentence answers
+   - Expand on each point with explanations and details
+
+3. STRUCTURE AND ORGANIZATION:
+   - Start with a brief introduction that summarizes what you'll cover
+   - Organize main points clearly with:
+     * Clear paragraphs for each major point
+     * Bullet points or numbered lists for multiple items
+     * Subheadings or bold text for key sections (if using markdown)
+   - Include specific examples, data, or quotes from the context
+   - End with a brief conclusion or summary if appropriate
+
+4. DETAIL AND DEPTH:
+   - Include ALL relevant information from the context
+   - If multiple sources mention the same topic, synthesize them comprehensively
+   - Explain relationships between different pieces of information
+   - Provide context and background when helpful
+   - Don't skip important details - be thorough
+
+5. FORMATTING AND READABILITY:
+   - Use clear paragraphs (2-4 sentences each)
+   - Use bullet points (•) or numbered lists (1., 2., 3.) for multiple items
+   - Use line breaks to separate major sections
+   - Bold or emphasize key terms when appropriate (using **bold** in markdown)
+   - Make the answer easy to scan and read
+
+6. CITATIONS AND SOURCES:
+   - Reference specific sources when mentioning information
+   - Use phrases like "According to Source 1...", "As mentioned in the document...", "The text states..."
+   - When multiple sources agree, mention that
+
+7. COMPLETENESS:
+   - Ensure your answer FULLY addresses the question
+   - If the question asks for multiple aspects, cover ALL of them
+   - If the question has sub-questions, answer each one
+   - Don't leave any part of the question unanswered
+
+8. IMAGES AND VISUAL CONTENT:
+   - If the question is about images, refer to the image descriptions and OCR text provided
+   - Describe visual elements in detail when relevant
+
+9. CLARITY AND PROFESSIONALISM:
+   - Write in a clear, professional manner
+   - Use appropriate terminology from the context
+   - Define technical terms if needed
+   - Ensure the answer is easy to understand
+
+10. QUALITY CHECK:
+    - Before finalizing, ensure the answer is:
+      * Long enough (not too brief)
+      * Comprehensive (covers all aspects)
+      * Well-structured (easy to read)
+      * In the correct language
+      * Based on the provided context
+
+REMEMBER: The user expects a THOROUGH, DETAILED response that fully answers their question. Do NOT provide a brief summary. Be comprehensive, clear, and well-organized.
 """
     response = client.models.generate_content_stream(
         model=LLM_MODEL,
         contents=prompt,
         config={
             "temperature": 0.7,
-            "max_output_tokens": 2048
+            # No max_output_tokens limit - let the model generate as much as needed for comprehensive answers
         }
     )
     
@@ -180,26 +283,105 @@ def generate_answer(context: str, question: str, stream: bool = False):
     if not client:
         raise ValueError("Google API client is not initialized. Please check GOOGLE_API_KEY in .env file.")
     
-    prompt = f"""You are a helpful AI assistant. Use the following context to answer the user's question accurately and comprehensively.
+    # Detect language from question
+    detected_lang = _detect_language(question)
+    
+    if detected_lang == 'vi':
+        language_instruction = """Trả lời bằng tiếng Việt một cách chi tiết, đầy đủ và rõ ràng. 
+        - Sử dụng ngôn ngữ tự nhiên, dễ hiểu
+        - Giải thích đầy đủ các khái niệm
+        - Cung cấp ví dụ cụ thể khi có thể
+        - Trình bày có cấu trúc với các đoạn văn rõ ràng"""
+    else:
+        language_instruction = """Answer in the same language as the question, providing a detailed, comprehensive, and well-structured response.
+        - Use natural, clear language
+        - Explain concepts thoroughly
+        - Provide specific examples when possible
+        - Structure your response with clear paragraphs"""
+    
+    prompt = f"""You are an expert AI assistant specialized in document analysis and question answering. Your task is to provide detailed, comprehensive, and well-structured answers based on the provided context.
 
-Context:
+Context from documents:
 {context}
 
-Question: {question}
+User's question: {question}
 
-Instructions:
-- Answer based on the provided context
-- If the context doesn't contain enough information, say so clearly
-- Cite specific details from the context when possible
-- Be concise but thorough
-- If the question is about images, refer to the image descriptions provided in the context
+CRITICAL INSTRUCTIONS - FOLLOW THESE CAREFULLY:
+
+1. LANGUAGE REQUIREMENT: {language_instruction}
+   - Match the language of the question exactly
+   - If question is in Vietnamese, answer in Vietnamese
+   - If question is in English, answer in English
+   - Maintain consistency throughout the response
+
+2. LENGTH AND COMPREHENSIVENESS (VERY IMPORTANT):
+   - Provide a THOROUGH, DETAILED answer - NOT a brief summary
+   - Aim for at least 300-500 words for complex questions, 150-300 words for simpler ones
+   - Elaborate on ALL relevant points mentioned in the context
+   - Include background information and context when relevant
+   - Do NOT give short, one-sentence answers
+   - Expand on each point with explanations and details
+
+3. STRUCTURE AND ORGANIZATION:
+   - Start with a brief introduction that summarizes what you'll cover
+   - Organize main points clearly with:
+     * Clear paragraphs for each major point
+     * Bullet points or numbered lists for multiple items
+     * Subheadings or bold text for key sections (if using markdown)
+   - Include specific examples, data, or quotes from the context
+   - End with a brief conclusion or summary if appropriate
+
+4. DETAIL AND DEPTH:
+   - Include ALL relevant information from the context
+   - If multiple sources mention the same topic, synthesize them comprehensively
+   - Explain relationships between different pieces of information
+   - Provide context and background when helpful
+   - Don't skip important details - be thorough
+
+5. FORMATTING AND READABILITY:
+   - Use clear paragraphs (2-4 sentences each)
+   - Use bullet points (•) or numbered lists (1., 2., 3.) for multiple items
+   - Use line breaks to separate major sections
+   - Bold or emphasize key terms when appropriate (using **bold** in markdown)
+   - Make the answer easy to scan and read
+
+6. CITATIONS AND SOURCES:
+   - Reference specific sources when mentioning information
+   - Use phrases like "According to Source 1...", "As mentioned in the document...", "The text states..."
+   - When multiple sources agree, mention that
+
+7. COMPLETENESS:
+   - Ensure your answer FULLY addresses the question
+   - If the question asks for multiple aspects, cover ALL of them
+   - If the question has sub-questions, answer each one
+   - Don't leave any part of the question unanswered
+
+8. IMAGES AND VISUAL CONTENT:
+   - If the question is about images, refer to the image descriptions and OCR text provided
+   - Describe visual elements in detail when relevant
+
+9. CLARITY AND PROFESSIONALISM:
+   - Write in a clear, professional manner
+   - Use appropriate terminology from the context
+   - Define technical terms if needed
+   - Ensure the answer is easy to understand
+
+10. QUALITY CHECK:
+    - Before finalizing, ensure the answer is:
+      * Long enough (not too brief)
+      * Comprehensive (covers all aspects)
+      * Well-structured (easy to read)
+      * In the correct language
+      * Based on the provided context
+
+REMEMBER: The user expects a THOROUGH, DETAILED response that fully answers their question. Do NOT provide a brief summary. Be comprehensive, clear, and well-organized.
 """
     response = client.models.generate_content(
         model=LLM_MODEL,
         contents=prompt,
         config={
             "temperature": 0.7,
-            "max_output_tokens": 2048
+            # No max_output_tokens limit - let the model generate as much as needed for comprehensive answers
         }
     )
     # Handle different response formats from Google API
@@ -357,6 +539,9 @@ def rag_query(question: str, k: int = None, stream: bool = False) -> Dict:
     else:
         try:
             answer = generate_answer(context, question, stream=False)
+            if not answer or answer.strip() == "":
+                logger.warning("Generated empty answer, using fallback")
+                answer = "I couldn't generate a proper answer. Please try rephrasing your question or check if the documents contain relevant information."
             return {
                 "answer": answer,
                 "sources": docs,
@@ -366,9 +551,11 @@ def rag_query(question: str, k: int = None, stream: bool = False) -> Dict:
             logger.error(f"Error generating answer: {e}", exc_info=True)
             # Return error message but still return sources for debugging
             error_msg = str(e)
-            if "API key" in error_msg or "authentication" in error_msg.lower():
+            if "API key" in error_msg or "authentication" in error_msg.lower() or "GOOGLE_API_KEY" in error_msg:
                 error_msg = "Google API key error. Please check your .env file."
             elif "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
                 error_msg = "API quota exceeded or rate limited. Please try again later."
+            elif "client" in error_msg.lower() and "not initialized" in error_msg.lower():
+                error_msg = "Google AI client not initialized. Please check GOOGLE_API_KEY in .env file."
             raise ValueError(f"Failed to generate answer: {error_msg}")
 

@@ -10,7 +10,9 @@ import { Trash2, X, Plus, Sparkles, LogOut, User } from 'lucide-react'
 const API_BASE = import.meta.env.VITE_API_BASE || (
   import.meta.env.DEV 
     ? '/api'  // Use Vite proxy in development
-    : 'http://localhost:8000'  // Direct connection in production
+    : import.meta.env.PROD
+    ? 'https://your-backend-url.railway.app'  // Production backend URL - UPDATE THIS
+    : 'http://localhost:8000'  // Fallback for local production build
 )
 
 // Auth Context
@@ -65,6 +67,7 @@ function AppContent() {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [activeTab, setActiveTab] = useState('chat')
   const [showChat, setShowChat] = useState(false)
   const [backendStatus, setBackendStatus] = useState(null)
@@ -144,52 +147,82 @@ function AppContent() {
     }
 
     setUploadStatus({ type: 'uploading', message: 'Đang tải lên...' })
+    setUploadProgress(0)
     
     const formData = new FormData()
     formData.append('file', file)
 
-    try {
-      console.log(`Uploading file to: ${API_BASE}/upload`)
-      const response = await fetch(`${API_BASE}/upload`, {
-        method: 'POST',
-        body: formData,
-      })
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
 
-      console.log(`Upload response status: ${response.status}`)
-
-      if (!response.ok) {
-        let errorMessage = 'Upload failed'
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.detail || errorData.message || errorMessage
-          console.error('Upload error response:', errorData)
-        } catch (e) {
-          const text = await response.text()
-          console.error('Upload error text:', text)
-          errorMessage = text || `HTTP ${response.status}: ${response.statusText}`
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 100)
+          setUploadProgress(percentComplete)
+          setUploadStatus({ 
+            type: 'uploading', 
+            message: `Đang tải lên... ${percentComplete}%` 
+          })
         }
-        throw new Error(errorMessage)
-      }
-
-      const data = await response.json()
-      console.log('Upload success:', data)
-      setUploadStatus({ 
-        type: 'success', 
-        message: `✅ ${data.filename} đã được lập chỉ mục (${data.chunks_indexed} chunks)` 
       })
-      
-      // Auto-switch to chat after successful upload
-      setShowChat(true)
-      setActiveTab('chat')
-      
-      // Clear status after 5 seconds
-      setTimeout(() => setUploadStatus(null), 5000)
-    } catch (error) {
+
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            console.log('Upload success:', data)
+            setUploadProgress(100)
+            setUploadStatus({ 
+              type: 'success', 
+              message: `✅ ${data.filename} đã được lập chỉ mục (${data.chunks_indexed} chunks)` 
+            })
+            
+            // Auto-switch to chat after successful upload
+            setShowChat(true)
+            setActiveTab('chat')
+            
+            // Clear status after 5 seconds
+            setTimeout(() => {
+              setUploadStatus(null)
+              setUploadProgress(0)
+            }, 5000)
+            resolve(data)
+          } catch (e) {
+            console.error('Error parsing response:', e)
+            reject(new Error('Invalid response from server'))
+          }
+        } else {
+          let errorMessage = 'Upload failed'
+          try {
+            const errorData = JSON.parse(xhr.responseText)
+            errorMessage = errorData.detail || errorData.message || errorMessage
+          } catch (e) {
+            errorMessage = xhr.responseText || `HTTP ${xhr.status}: ${xhr.statusText}`
+          }
+          reject(new Error(errorMessage))
+        }
+      })
+
+      // Handle errors
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error occurred'))
+      })
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload cancelled'))
+      })
+
+      // Open and send request
+      xhr.open('POST', `${API_BASE}/upload`)
+      xhr.send(formData)
+    }).catch((error) => {
       console.error('Upload error:', error)
       let errorMessage = error.message || 'Upload failed'
       
       // Provide more helpful error messages
-      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('fetch')) {
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('fetch') || errorMessage.includes('Network error')) {
         errorMessage = `Không thể kết nối đến backend server.\n\nVui lòng kiểm tra:\n- Backend server đang chạy tại ${API_BASE}\n- CORS đã được cấu hình đúng\n- Không có firewall chặn kết nối`
       } else if (errorMessage.includes('pypdf')) {
         errorMessage = 'Lỗi xử lý PDF: pypdf chưa được cài đặt trong backend.\n\nChạy lệnh: pip install pypdf'
@@ -201,8 +234,11 @@ function AppContent() {
         type: 'error', 
         message: `❌ ${errorMessage}` 
       })
-      setTimeout(() => setUploadStatus(null), 8000)
-    }
+      setUploadProgress(0)
+      setTimeout(() => {
+        setUploadStatus(null)
+      }, 8000)
+    })
   }
 
   const handleAsk = async (question, stream = false) => {
@@ -331,16 +367,20 @@ function AppContent() {
       let errorMessage = error.message || 'Unknown error'
       
       // Provide more helpful error messages
-      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('fetch')) {
         errorMessage = 'Không thể kết nối đến backend server. Vui lòng kiểm tra backend đang chạy tại http://localhost:8000'
+      } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
+        errorMessage = 'Google API đã vượt quá quota hoặc bị rate limit. Vui lòng thử lại sau hoặc kiểm tra quota API key.'
       } else if (errorMessage.includes('get_relevant_documents')) {
         errorMessage = 'Lỗi tương thích LangChain. Vui lòng cập nhật langchain-community trong backend'
-      } else if (errorMessage.includes('No documents') || errorMessage.includes('empty')) {
+      } else if (errorMessage.includes('No documents') || errorMessage.includes('empty') || errorMessage.includes('No documents indexed')) {
         errorMessage = 'Chưa có tài liệu nào được tải lên. Vui lòng tải lên ít nhất một tài liệu trước.'
-      } else if (errorMessage.includes('API key') || errorMessage.includes('GOOGLE_API_KEY')) {
+      } else if (errorMessage.includes('API key') || errorMessage.includes('GOOGLE_API_KEY') || errorMessage.includes('authentication')) {
         errorMessage = 'Lỗi Google API key. Vui lòng kiểm tra file .env trong backend'
-      } else if (errorMessage.includes('Qdrant') || errorMessage.includes('connection')) {
+      } else if (errorMessage.includes('Qdrant') || errorMessage.includes('connection') || errorMessage.includes('vector database')) {
         errorMessage = 'Không thể kết nối đến Qdrant. Vui lòng đảm bảo Qdrant đang chạy'
+      } else if (errorMessage.includes('Failed to retrieve') || errorMessage.includes('retrieve documents')) {
+        errorMessage = 'Không thể truy xuất tài liệu từ database. Vui lòng đảm bảo tài liệu đã được lập chỉ mục đúng cách.'
       }
       
       setMessages(prev => prev.map(msg => 
@@ -525,7 +565,11 @@ function AppContent() {
                 <h3 className="text-2xl font-semibold text-gray-900 mb-4">
                   Chat với bất kỳ tệp, video hoặc website
                 </h3>
-                <FileUploader onUpload={handleUpload} />
+                <FileUploader 
+                  onUpload={handleUpload} 
+                  uploadProgress={uploadProgress}
+                  isUploading={uploadStatus?.type === 'uploading'}
+                />
               </div>
 
               {/* Input Field */}
@@ -551,7 +595,7 @@ function AppContent() {
                 />
               </div>
 
-              {uploadStatus && (
+              {uploadStatus && uploadStatus.type !== 'uploading' && (
                 <div className={`mt-4 p-3 rounded-lg text-sm ${
                   uploadStatus.type === 'success' 
                     ? 'bg-green-50 text-green-700 border border-green-200' 

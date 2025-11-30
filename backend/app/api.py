@@ -27,9 +27,16 @@ app = FastAPI(
 )
 
 # CORS middleware
+# Allow origins from environment variable or default to all
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "*")
+if allowed_origins_str == "*":
+    allowed_origins = ["*"]
+else:
+    allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -89,15 +96,14 @@ async def health_check():
         # Check Qdrant connection
         client = get_qdrant_client()
         client.get_collections()
-        return health_info
+        health_info["qdrant"] = "connected"
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        health_info["status"] = "unhealthy"
-        health_info["error"] = str(e)
-        return JSONResponse(
-            status_code=503,
-            content=health_info
-        )
+        logger.error(f"Qdrant connection failed: {e}")
+        health_info["qdrant"] = "disconnected"
+        health_info["qdrant_error"] = str(e)
+    
+    # Always return health_info, even if Qdrant fails
+    return health_info
 
 
 @app.post("/upload")
@@ -255,12 +261,19 @@ async def summarize_document(
     except Exception as e:
         logger.error(f"Error generating summary: {e}", exc_info=True)
         error_msg = str(e)
-        if "GOOGLE_API_KEY" in error_msg or "API key" in error_msg:
+        if "GOOGLE_API_KEY" in error_msg or "API key" in error_msg or "authentication" in error_msg.lower():
             error_msg = "Google API key is missing or invalid. Please check your .env file."
-        elif "collection" in error_msg.lower() or "qdrant" in error_msg.lower():
+        elif "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+            error_msg = "Google API quota exceeded or rate limited. Please try again later or check your API quota."
+        elif "collection" in error_msg.lower() or "qdrant" in error_msg.lower() or "connection" in error_msg.lower():
             error_msg = "Vector database error. Please ensure Qdrant is running and you have uploaded at least one document."
-        elif "No documents" in error_msg or "empty" in error_msg.lower():
+        elif "No documents" in error_msg or "empty" in error_msg.lower() or "No documents indexed" in error_msg:
             error_msg = "No documents found. Please upload at least one document first."
+        elif "Failed to retrieve" in error_msg or "retrieve documents" in error_msg.lower():
+            error_msg = "Failed to retrieve documents from vector database. Please ensure documents are properly indexed."
+        elif "Failed to generate answer" in error_msg:
+            # Keep the detailed error message from rag_query
+            pass
         raise HTTPException(status_code=500, detail=error_msg)
 
 
@@ -351,12 +364,17 @@ async def ask_question(
         logger.error(f"Error processing question: {e}", exc_info=True)
         error_msg = str(e)
         # Provide more helpful error messages
-        if "GOOGLE_API_KEY" in error_msg or "API key" in error_msg:
+        if "GOOGLE_API_KEY" in error_msg or "API key" in error_msg or "authentication" in error_msg.lower():
             error_msg = "Google API key is missing or invalid. Please check your .env file."
-        elif "collection" in error_msg.lower() or "qdrant" in error_msg.lower():
+        elif "collection" in error_msg.lower() or "qdrant" in error_msg.lower() or "connection" in error_msg.lower():
             error_msg = "Vector database error. Please ensure Qdrant is running and you have uploaded at least one document."
-        elif "No documents" in error_msg or "empty" in error_msg.lower():
+        elif "No documents" in error_msg or "empty" in error_msg.lower() or "No documents indexed" in error_msg:
             error_msg = "No documents found. Please upload at least one document first."
+        elif "Failed to retrieve" in error_msg or "retrieve documents" in error_msg.lower():
+            error_msg = "Failed to retrieve documents from vector database. Please ensure documents are properly indexed."
+        elif "Failed to generate answer" in error_msg:
+            # Keep the detailed error message from rag_query
+            pass
         raise HTTPException(status_code=500, detail=error_msg)
 
 
