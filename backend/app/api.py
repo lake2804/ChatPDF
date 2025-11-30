@@ -16,7 +16,10 @@ from app.store import delete_collection, get_qdrant_client
 from app.config import UPLOAD_DIR, MAX_FILE_SIZE, QDRANT_COLLECTION
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
@@ -25,6 +28,13 @@ app = FastAPI(
     description="RAG system supporting PDF, DOCX, PPTX, TXT, Markdown, and Images",
     version="1.0.0"
 )
+
+# Startup event to log when app starts
+@app.on_event("startup")
+async def startup_event():
+    port = os.getenv("PORT", "8000")
+    logger.info(f"🚀 ChatPDF API starting on port {port}")
+    logger.info(f"Environment: PORT={port}, QDRANT_URL={os.getenv('QDRANT_URL', 'not set')}")
 
 # CORS middleware
 # Allow origins from environment variable or default to all
