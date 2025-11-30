@@ -63,13 +63,13 @@ async def health_check():
     import sys
     health_info = {
         "status": "healthy",
-        "qdrant": "connected",
+        "qdrant": "checking",
         "collection": QDRANT_COLLECTION,
         "python": sys.executable,
         "python_version": sys.version.split()[0]
     }
     
-    # Check critical packages
+    # Check critical packages (non-blocking)
     packages_status = {}
     try:
         import pypdf
@@ -92,17 +92,18 @@ async def health_check():
     
     health_info["packages"] = packages_status
     
+    # Check Qdrant connection (non-blocking - don't fail healthcheck if Qdrant is down)
     try:
-        # Check Qdrant connection
         client = get_qdrant_client()
         client.get_collections()
         health_info["qdrant"] = "connected"
     except Exception as e:
-        logger.error(f"Qdrant connection failed: {e}")
+        logger.warning(f"Qdrant connection check failed: {e}")
         health_info["qdrant"] = "disconnected"
         health_info["qdrant_error"] = str(e)
+        # Don't fail healthcheck - app can still run without Qdrant initially
     
-    # Always return health_info, even if Qdrant fails
+    # Always return 200 OK - healthcheck should pass even if some services are down
     return health_info
 
 
