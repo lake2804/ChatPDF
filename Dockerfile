@@ -25,8 +25,8 @@ EXPOSE 8000
 
 # Run the application
 # Railway provides PORT environment variable
-# Use exec form to ensure proper signal handling
+# Use shell form to allow variable expansion
 ENV PORT=8000
-EXPOSE $PORT
-CMD exec uvicorn app.api:app --host 0.0.0.0 --port $PORT
+EXPOSE 8000
+CMD uvicorn app.api:app --host 0.0.0.0 --port ${PORT:-8000}
 

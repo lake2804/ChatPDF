@@ -59,52 +59,10 @@ SUPPORTED_EXTENSIONS = {
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    import sys
-    health_info = {
-        "status": "healthy",
-        "qdrant": "checking",
-        "collection": QDRANT_COLLECTION,
-        "python": sys.executable,
-        "python_version": sys.version.split()[0]
-    }
-    
-    # Check critical packages (non-blocking)
-    packages_status = {}
-    try:
-        import pypdf
-        packages_status["pypdf"] = {"available": True, "version": getattr(pypdf, '__version__', 'unknown')}
-    except ImportError:
-        packages_status["pypdf"] = {"available": False, "error": "not installed"}
-    
-    try:
-        import fitz
-        packages_status["pymupdf"] = {"available": True}
-    except ImportError:
-        packages_status["pymupdf"] = {"available": False, "error": "not installed"}
-    
-    # Check PyPDFLoader (critical for PDF loading)
-    try:
-        from langchain_community.document_loaders import PyPDFLoader
-        packages_status["PyPDFLoader"] = {"available": True}
-    except ImportError as e:
-        packages_status["PyPDFLoader"] = {"available": False, "error": str(e)}
-    
-    health_info["packages"] = packages_status
-    
-    # Check Qdrant connection (non-blocking - don't fail healthcheck if Qdrant is down)
-    try:
-        client = get_qdrant_client()
-        client.get_collections()
-        health_info["qdrant"] = "connected"
-    except Exception as e:
-        logger.warning(f"Qdrant connection check failed: {e}")
-        health_info["qdrant"] = "disconnected"
-        health_info["qdrant_error"] = str(e)
-        # Don't fail healthcheck - app can still run without Qdrant initially
-    
-    # Always return 200 OK - healthcheck should pass even if some services are down
-    return health_info
+    """Health check endpoint - simplified for Railway healthcheck."""
+    # Simple healthcheck that always returns 200 OK
+    # This ensures Railway healthcheck passes even if some services are not ready
+    return {"status": "healthy", "service": "chatpdf-api"}
 
 
 @app.post("/upload")
