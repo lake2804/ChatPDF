@@ -73,11 +73,12 @@ https://83eae4b7-cbfc-4077-9d58-1bb4a74473e3.us-east4-0.gcp.cloud.qdrant.io
 
 1. Click vào service vừa tạo
 2. Vào tab **"Settings"**
-3. Tìm **"Root Directory"** → Set: `backend`
-4. Tìm **"Build Command"** → Để trống (sử dụng Dockerfile)
-5. Tìm **"Start Command"** → Set: `uvicorn app.api:app --host 0.0.0.0 --port $PORT`
-6. **Quan trọng**: Đảm bảo Railway sử dụng Dockerfile thay vì Nixpacks
-   - Vào **Settings** → **Build** → Chọn **"Dockerfile"** thay vì **"Nixpacks"**
+3. **Root Directory**: Để trống hoặc không set (Dockerfile ở root sẽ tự động copy từ backend/)
+4. **Build Command**: Để trống (sử dụng Dockerfile)
+5. **Start Command**: Set: `uvicorn app.api:app --host 0.0.0.0 --port $PORT`
+6. **Quan trọng**: Đảm bảo Railway sử dụng Dockerfile
+   - Vào **Settings** → **Build** → Chọn **"Dockerfile"** 
+   - **Dockerfile Path**: `Dockerfile` (hoặc để trống nếu Dockerfile ở root)
 
 ### 2.4. Cấu hình Environment Variables
 
